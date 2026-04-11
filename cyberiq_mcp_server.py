@@ -39,6 +39,89 @@ from mcp.server.fastmcp import FastMCP
 # ========================================
 mcp = FastMCP("CyberIQ Federal Security")
 
+# ========================================
+# REST Test Endpoints (browser-friendly)
+# ========================================
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.responses import JSONResponse, HTMLResponse
+
+async def test_page(request):
+    """Browser-based test page for MCP tools"""
+    html = """<!DOCTYPE html>
+<html><head><title>CyberIQ MCP Server</title>
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: #0a0e17; color: #e2e8f0; padding: 40px; max-width: 800px; margin: 0 auto; }
+h1 { color: #22d3ee; } h2 { color: #34d399; margin-top: 30px; }
+a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+.badge { background: #22d3ee; color: #0a0e17; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; }
+</style></head><body>
+<h1>CyberIQ Federal Security MCP Server</h1>
+<p><span class="badge">LIVE</span> &nbsp; Powered by CyberIQ &mdash; <a href="https://cyberiq.co">cyberiq.co</a></p>
+
+<h2>MCP Endpoint</h2>
+<pre>SSE: """ + request.url.scheme + "://" + request.headers.get("host", "") + """/sse</pre>
+<p>Connect any MCP client (Claude Desktop, ChatGPT, Cursor, etc.) to this endpoint.</p>
+
+<h2>Test Tools (REST API)</h2>
+<ul>
+<li><a href="/api/test/lookup/CVE-2024-3400">/api/test/lookup/CVE-2024-3400</a> &mdash; CVE lookup with KEV + EPSS</li>
+<li><a href="/api/test/lookup/CVE-2024-21887">/api/test/lookup/CVE-2024-21887</a> &mdash; Ivanti Connect Secure</li>
+<li><a href="/api/test/kev/ransomware">/api/test/kev/ransomware</a> &mdash; Ransomware KEVs</li>
+<li><a href="/api/test/kev/Microsoft">/api/test/kev/Microsoft</a> &mdash; Microsoft KEVs</li>
+<li><a href="/api/test/epss/CVE-2024-3400,CVE-2024-21887">/api/test/epss/CVE-2024-3400,CVE-2024-21887</a> &mdash; Batch EPSS</li>
+<li><a href="/api/test/threat/Volt Typhoon">/api/test/threat/Volt Typhoon</a> &mdash; Threat actor lookup</li>
+<li><a href="/api/test/threat/T1190">/api/test/threat/T1190</a> &mdash; ATT&CK technique</li>
+</ul>
+
+<h2>Available MCP Tools</h2>
+<pre>
+1. lookup_cve        &mdash; Full CVE enrichment (NVD + KEV + EPSS)
+2. check_kev_status  &mdash; Search CISA KEV catalog
+3. get_epss_scores   &mdash; Exploit probability scores
+4. search_threats    &mdash; MITRE ATT&CK + threat actors
+5. generate_poam     &mdash; Federal POA&M entry generation
+</pre>
+
+<h2>Data Sources</h2>
+<pre>
+- NIST NVD (National Vulnerability Database)
+- CISA KEV (Known Exploited Vulnerabilities)
+- FIRST.org EPSS (Exploit Prediction Scoring System)
+- MITRE ATT&CK Framework
+</pre>
+</body></html>"""
+    return HTMLResponse(html)
+
+async def test_lookup(request):
+    cve_id = request.path_params["cve_id"]
+    result = await lookup_cve(cve_id)
+    return JSONResponse(result)
+
+async def test_kev(request):
+    query = request.path_params["query"]
+    result = await check_kev_status(query)
+    return JSONResponse(result)
+
+async def test_epss(request):
+    cve_ids = request.path_params["cve_ids"]
+    result = await get_epss_scores(cve_ids)
+    return JSONResponse(result)
+
+async def test_threat(request):
+    query = request.path_params["query"]
+    result = await search_threats(query)
+    return JSONResponse(result)
+
+# Mount test routes on the MCP server's underlying Starlette app
+_test_routes = [
+    Route("/", test_page),
+    Route("/api/test/lookup/{cve_id}", test_lookup),
+    Route("/api/test/kev/{query:path}", test_kev),
+    Route("/api/test/epss/{cve_ids}", test_epss),
+    Route("/api/test/threat/{query:path}", test_threat),
+]
+
 # Optional: Anthropic API key for POA&M generation
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
@@ -639,6 +722,9 @@ def server_info() -> str:
 
 if __name__ == "__main__":
     import sys
+    import uvicorn
+    from starlette.applications import Starlette
+    from starlette.routing import Route, Mount
 
     transport = "stdio"
     port = int(os.environ.get("PORT", 8100))
@@ -663,6 +749,14 @@ if __name__ == "__main__":
         mcp.settings.transport_security.allowed_hosts = ["*"]
         mcp.settings.transport_security.allowed_origins = ["*"]
         
-        mcp.run(transport="sse")
+        # Get MCP's SSE app
+        mcp_app = mcp.sse_app()
+        
+        # Build combined app: test routes + MCP SSE
+        app = Starlette(
+            routes=_test_routes + [Mount("/", app=mcp_app)]
+        )
+        
+        uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         mcp.run(transport="stdio")
