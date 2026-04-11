@@ -655,15 +655,14 @@ if __name__ == "__main__":
 
     if transport in ("http", "sse"):
         print(f"🚀 Starting CyberIQ MCP Server on port {port}")
-        # Set host/port via environment for FastMCP
-        os.environ["MCP_HOST"] = "0.0.0.0"
-        os.environ["MCP_PORT"] = str(port)
-        os.environ["FASTMCP_PORT"] = str(port)
-        os.environ["HOST"] = "0.0.0.0"
-        os.environ["UVICORN_HOST"] = "0.0.0.0"
-        os.environ["UVICORN_PORT"] = str(port)
+        
+        # Allow Railway proxy domain
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = port
+        mcp.settings.transport_security.enable_dns_rebinding_protection = False
+        mcp.settings.transport_security.allowed_hosts = ["*"]
+        mcp.settings.transport_security.allowed_origins = ["*"]
+        
         mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")
