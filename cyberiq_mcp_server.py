@@ -651,10 +651,19 @@ if __name__ == "__main__":
 
     # Default to HTTP if PORT env is set (Railway/cloud deployment)
     if os.environ.get("PORT"):
-        transport = "http"
+        transport = "sse"
 
-    if transport == "http":
-        print(f"🚀 Starting CyberIQ MCP Server on http://0.0.0.0:{port}/mcp")
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    if transport in ("http", "sse"):
+        print(f"🚀 Starting CyberIQ MCP Server on port {port}")
+        # Set host/port via environment for FastMCP
+        os.environ["MCP_HOST"] = "0.0.0.0"
+        os.environ["MCP_PORT"] = str(port)
+        os.environ["FASTMCP_PORT"] = str(port)
+        os.environ["HOST"] = "0.0.0.0"
+        os.environ["UVICORN_HOST"] = "0.0.0.0"
+        os.environ["UVICORN_PORT"] = str(port)
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
+        mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")
