@@ -37,12 +37,7 @@ from mcp.server.fastmcp import FastMCP
 # ========================================
 # Initialize MCP Server
 # ========================================
-mcp = FastMCP(
-    "CyberIQ Federal Security",
-    description="AI-powered cybersecurity intelligence for federal agencies. "
-                "Provides CVE lookup, CISA KEV status, EPSS scoring, "
-                "MITRE ATT&CK mapping, and POA&M generation."
-)
+mcp = FastMCP("CyberIQ Federal Security")
 
 # Optional: Anthropic API key for POA&M generation
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
