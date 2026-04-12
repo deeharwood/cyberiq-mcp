@@ -1,12 +1,12 @@
 """
-CyberIQ Federal Security MCP Server
+CyberIQ Security MCP Server
 ====================================
 An MCP server that gives any AI agent instant access to:
 - NVD vulnerability data with CVSS scores
 - CISA KEV catalog with BOD 22-01 status
 - EPSS exploit probability scores
 - MITRE ATT&CK technique mapping
-- Federal POA&M generation
+- POA&M generation
 
 Deploy: Railway, Docker, or local
 Protocol: Streamable HTTP (remote) or stdio (local)
@@ -28,6 +28,7 @@ Usage remote (Streamable HTTP):
 
 import os
 import re
+
 import json
 import httpx
 from datetime import datetime, timedelta
@@ -37,7 +38,7 @@ from mcp.server.fastmcp import FastMCP
 # ========================================
 # Initialize MCP Server
 # ========================================
-mcp = FastMCP("CyberIQ Federal Security")
+mcp = FastMCP("CyberIQ Security")
 
 # ========================================
 # REST Test Endpoints (browser-friendly)
@@ -56,7 +57,7 @@ h1 { color: #22d3ee; } h2 { color: #34d399; margin-top: 30px; }
 a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
 .badge { background: #22d3ee; color: #0a0e17; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; }
 </style></head><body>
-<h1>CyberIQ Federal Security MCP Server</h1>
+<h1>CyberIQ Security MCP Server</h1>
 <p><span class="badge">LIVE</span> &nbsp; Powered by CyberIQ &mdash; <a href="https://cyberiq.co">cyberiq.co</a></p>
 
 <h2>MCP Endpoint</h2>
@@ -80,7 +81,7 @@ a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8
 2. check_kev_status  &mdash; Search CISA KEV catalog
 3. get_epss_scores   &mdash; Exploit probability scores
 4. search_threats    &mdash; MITRE ATT&CK + threat actors
-5. generate_poam     &mdash; Federal POA&M entry generation
+5. generate_poam     &mdash; POA&M entry generation
 </pre>
 
 <h2>Data Sources</h2>
@@ -532,7 +533,7 @@ async def generate_poam(
     cvss_score: float = 0.0
 ) -> dict:
     """
-    Generate a federal Plan of Action & Milestones (POA&M) entry for a CVE.
+    Generate a Plan of Action & Milestones (POA&M) entry for a CVE.
     Includes NIST 800-53 control mapping, remediation timeline based on
     BOD 22-01, EPSS score, and KEV status. Output is formatted for
     eMASS or XACTA entry.
@@ -601,7 +602,7 @@ async def generate_poam(
                         "model": "claude-sonnet-4-20250514",
                         "max_tokens": 800,
                         "temperature": 0.2,
-                        "system": "You are a federal cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
+                        "system": "You are a cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
                         "messages": [{"role": "user", "content": f"""Generate a POA&M weakness description and remediation plan for:
 CVE: {cve_id}
 Description: {cve_data.get('description', 'N/A')[:300]}
@@ -687,16 +688,16 @@ async def kev_statistics() -> str:
 def server_info() -> str:
     """CyberIQ MCP Server information and capabilities"""
     return json.dumps({
-        "name": "CyberIQ Federal Security MCP Server",
+        "name": "CyberIQ Cyber Security MCP Server",
         "version": "1.0.0",
         "provider": "CyberIQ (cyberiq.co)",
-        "description": "AI-powered cybersecurity intelligence for federal agencies and defense contractors",
+        "description": "AI-powered cybersecurity intelligence for security analysts",
         "tools": [
             "lookup_cve — Full CVE enrichment with NVD, KEV, EPSS",
             "check_kev_status — Search CISA KEV catalog",
             "get_epss_scores — Exploit probability scores",
             "search_threats — MITRE ATT&CK and threat actor lookup",
-            "generate_poam — Federal POA&M entry generation"
+            "generate_poam — POA&M entry generation"
         ],
         "data_sources": [
             "NIST NVD (National Vulnerability Database)",
