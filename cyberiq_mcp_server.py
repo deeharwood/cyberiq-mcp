@@ -749,12 +749,11 @@ async def lookup_atlas_technique(technique_id: str) -> dict:
     return {
         "technique_id": tid,
         "name": tech.get("name", ""),
-        "tactic": tech.get("tactic", ""),
-        "tactic_id": tech.get("tactic_id", ""),
+        "tactic_ids": tech.get("tactic_ids", []),
+        "tactic_names": tech.get("tactic_names", []),
+        "is_subtechnique": tech.get("is_subtechnique", False),
         "description": tech.get("description", ""),
-        "attck_shared": tech.get("attck_shared", False),
-        "also_in_tactics": tech.get("also_in_tactics", []),
-        "safe_ai_controls": tech.get("safe_ai_controls", {}),
+        "mitigations": tech.get("mitigations", []),
         "safe_ai_threats": related_threats,
         "source": "MITRE ATLAS v5.1.0 + SAFE-AI Framework"
     }
