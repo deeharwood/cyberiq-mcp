@@ -1,12 +1,14 @@
 """
-CyberIQ Security MCP Server
+CyberIQ Federal Security MCP Server
 ====================================
 An MCP server that gives any AI agent instant access to:
 - NVD vulnerability data with CVSS scores
 - CISA KEV catalog with BOD 22-01 status
 - EPSS exploit probability scores
 - MITRE ATT&CK technique mapping
-- POA&M generation
+- MITRE ATLAS adversarial AI technique lookup
+- SAFE-AI NIST 800-53 control mappings for AI systems
+- Federal POA&M generation
 
 Deploy: Railway, Docker, or local
 Protocol: Streamable HTTP (remote) or stdio (local)
@@ -28,17 +30,27 @@ Usage remote (Streamable HTTP):
 
 import os
 import re
-
 import json
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
+# ATLAS / SAFE-AI Knowledge Base
+try:
+    from atlas_knowledge import ATLAS_TACTICS, ATLAS_TECHNIQUES, SAFE_AI_THREATS, get_atlas_context
+    print("✅ ATLAS/SAFE-AI knowledge base loaded")
+except ImportError:
+    print("⚠️  atlas_knowledge.py not found - ATLAS tools disabled")
+    ATLAS_TACTICS = {}
+    ATLAS_TECHNIQUES = {}
+    SAFE_AI_THREATS = {}
+    def get_atlas_context(q): return "ATLAS knowledge base not loaded"
+
 # ========================================
 # Initialize MCP Server
 # ========================================
-mcp = FastMCP("CyberIQ Security")
+mcp = FastMCP("CyberIQ Federal Security")
 
 # ========================================
 # REST Test Endpoints (browser-friendly)
@@ -52,13 +64,23 @@ async def test_page(request):
     html = """<!DOCTYPE html>
 <html><head><title>CyberIQ MCP Server</title>
 <style>
-body { font-family: 'Segoe UI', sans-serif; background: #0a0e17; color: #e2e8f0; padding: 40px; max-width: 800px; margin: 0 auto; }
-h1 { color: #22d3ee; } h2 { color: #34d399; margin-top: 30px; }
-a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
-.badge { background: #22d3ee; color: #0a0e17; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; padding: 40px; min-height: 100vh; margin: 0; }
+.container { max-width: 800px; margin: 0 auto; }
+h1 { color: white; font-size: 32px; text-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+h2 { color: white; margin-top: 30px; font-size: 20px; text-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+a { color: #667eea; font-weight: 500; }
+p { color: rgba(255,255,255,0.9); }
+ul { background: white; border-radius: 12px; padding: 20px 20px 20px 40px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+li { padding: 4px 0; color: #444; }
+li a { color: #667eea; }
+pre { background: white; color: #333; padding: 16px; border-radius: 12px; overflow-x: auto; font-size: 13px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+.badge { background: white; color: #667eea; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 12px; display: inline-block; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.footer { text-align: center; padding: 30px 0 10px; color: rgba(255,255,255,0.6); font-size: 13px; }
+.footer a { color: white; text-decoration: none; }
 </style></head><body>
-<h1>CyberIQ Security MCP Server</h1>
-<p><span class="badge">LIVE</span> &nbsp; Powered by CyberIQ &mdash; <a href="https://cyberiq.co">cyberiq.co</a></p>
+<div class="container">
+<h1>&#128737; CyberIQ Federal Security MCP Server</h1>
+<p><span class="badge">LIVE</span> &nbsp; Powered by CyberIQ &mdash; <a href="https://cyberiq.co" style="color:white;">cyberiq.co</a></p>
 
 <h2>MCP Endpoint</h2>
 <pre>SSE: """ + request.url.scheme + "://" + request.headers.get("host", "") + """/sse</pre>
@@ -73,15 +95,22 @@ a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8
 <li><a href="/api/test/epss/CVE-2024-3400,CVE-2024-21887">/api/test/epss/CVE-2024-3400,CVE-2024-21887</a> &mdash; Batch EPSS</li>
 <li><a href="/api/test/threat/Volt Typhoon">/api/test/threat/Volt Typhoon</a> &mdash; Threat actor lookup</li>
 <li><a href="/api/test/threat/T1190">/api/test/threat/T1190</a> &mdash; ATT&CK technique</li>
+<li><a href="/api/test/atlas/technique/AML.T0051">/api/test/atlas/technique/AML.T0051</a> &mdash; ATLAS: Prompt Injection</li>
+<li><a href="/api/test/atlas/technique/AML.T0054">/api/test/atlas/technique/AML.T0054</a> &mdash; ATLAS: LLM Jailbreak</li>
+<li><a href="/api/test/atlas/threats">/api/test/atlas/threats</a> &mdash; All SAFE-AI threats</li>
+<li><a href="/api/test/atlas/tactics">/api/test/atlas/tactics</a> &mdash; All ATLAS tactics</li>
 </ul>
 
 <h2>Available MCP Tools</h2>
 <pre>
-1. lookup_cve        &mdash; Full CVE enrichment (NVD + KEV + EPSS)
-2. check_kev_status  &mdash; Search CISA KEV catalog
-3. get_epss_scores   &mdash; Exploit probability scores
-4. search_threats    &mdash; MITRE ATT&CK + threat actors
-5. generate_poam     &mdash; POA&M entry generation
+1. lookup_cve            &mdash; Full CVE enrichment (NVD + KEV + EPSS)
+2. check_kev_status      &mdash; Search CISA KEV catalog
+3. get_epss_scores       &mdash; Exploit probability scores
+4. search_threats        &mdash; MITRE ATT&CK + threat actors
+5. generate_poam         &mdash; Federal POA&M entry generation
+6. lookup_atlas_technique &mdash; MITRE ATLAS technique lookup with SAFE-AI controls
+7. search_atlas_threats  &mdash; Search SAFE-AI threats and NIST 800-53 mappings
+8. get_atlas_overview    &mdash; ATLAS tactics and techniques summary
 </pre>
 
 <h2>Data Sources</h2>
@@ -90,7 +119,11 @@ a { color: #22d3ee; } pre { background: #111827; padding: 16px; border-radius: 8
 - CISA KEV (Known Exploited Vulnerabilities)
 - FIRST.org EPSS (Exploit Prediction Scoring System)
 - MITRE ATT&CK Framework
+- MITRE ATLAS (Adversarial Threat Landscape for AI Systems)
+- MITRE SAFE-AI Framework (NIST 800-53 control mappings for AI)
 </pre>
+<div class="footer">Powered by <a href="https://cyberiq.co">CyberIQ</a> &mdash; AI-Powered Cybersecurity Intelligence</div>
+</div>
 </body></html>"""
     return HTMLResponse(html)
 
@@ -114,6 +147,19 @@ async def test_threat(request):
     result = await search_threats(query)
     return JSONResponse(result)
 
+async def test_atlas_technique(request):
+    technique_id = request.path_params["technique_id"]
+    result = await lookup_atlas_technique(technique_id)
+    return JSONResponse(result)
+
+async def test_atlas_threats(request):
+    result = await search_atlas_threats("all")
+    return JSONResponse(result)
+
+async def test_atlas_tactics(request):
+    result = await get_atlas_overview()
+    return JSONResponse(result)
+
 # Mount test routes on the MCP server's underlying Starlette app
 _test_routes = [
     Route("/", test_page),
@@ -121,6 +167,9 @@ _test_routes = [
     Route("/api/test/kev/{query:path}", test_kev),
     Route("/api/test/epss/{cve_ids}", test_epss),
     Route("/api/test/threat/{query:path}", test_threat),
+    Route("/api/test/atlas/technique/{technique_id}", test_atlas_technique),
+    Route("/api/test/atlas/threats", test_atlas_threats),
+    Route("/api/test/atlas/tactics", test_atlas_tactics),
 ]
 
 # Optional: Anthropic API key for POA&M generation
@@ -533,7 +582,7 @@ async def generate_poam(
     cvss_score: float = 0.0
 ) -> dict:
     """
-    Generate a Plan of Action & Milestones (POA&M) entry for a CVE.
+    Generate a federal Plan of Action & Milestones (POA&M) entry for a CVE.
     Includes NIST 800-53 control mapping, remediation timeline based on
     BOD 22-01, EPSS score, and KEV status. Output is formatted for
     eMASS or XACTA entry.
@@ -602,7 +651,7 @@ async def generate_poam(
                         "model": "claude-sonnet-4-20250514",
                         "max_tokens": 800,
                         "temperature": 0.2,
-                        "system": "You are a cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
+                        "system": "You are a federal cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
                         "messages": [{"role": "user", "content": f"""Generate a POA&M weakness description and remediation plan for:
 CVE: {cve_id}
 Description: {cve_data.get('description', 'N/A')[:300]}
@@ -665,6 +714,141 @@ Return ONLY a JSON object with keys: weakness_description, remediation_plan, mil
 
 
 # ========================================
+# MITRE ATLAS / SAFE-AI TOOLS
+# ========================================
+
+@mcp.tool()
+async def lookup_atlas_technique(technique_id: str) -> dict:
+    """
+    Look up a MITRE ATLAS technique by ID (e.g., AML.T0051).
+    Returns technique details, tactic mapping, ATT&CK cross-references,
+    and SAFE-AI NIST 800-53 control recommendations by system element.
+    """
+    tid = technique_id.upper().strip()
+    tech = ATLAS_TECHNIQUES.get(tid)
+    if not tech:
+        # Try partial match
+        matches = [(k, v) for k, v in ATLAS_TECHNIQUES.items()
+                   if tid in k or tid.lower() in v.get("name", "").lower()]
+        if matches:
+            tid, tech = matches[0]
+        else:
+            return {"error": f"Technique {technique_id} not found", "available_count": len(ATLAS_TECHNIQUES)}
+
+    # Find related SAFE-AI threats
+    related_threats = []
+    for tname, threat in SAFE_AI_THREATS.items():
+        if threat.get("atlas_id") == tid:
+            related_threats.append({
+                "threat_name": tname,
+                "description": threat.get("description", ""),
+                "controls_by_element": threat.get("controls", {}),
+                "residual_risk": threat.get("residual_risk", "")
+            })
+
+    return {
+        "technique_id": tid,
+        "name": tech.get("name", ""),
+        "tactic": tech.get("tactic", ""),
+        "tactic_id": tech.get("tactic_id", ""),
+        "description": tech.get("description", ""),
+        "attck_shared": tech.get("attck_shared", False),
+        "also_in_tactics": tech.get("also_in_tactics", []),
+        "safe_ai_controls": tech.get("safe_ai_controls", {}),
+        "safe_ai_threats": related_threats,
+        "source": "MITRE ATLAS v5.1.0 + SAFE-AI Framework"
+    }
+
+
+@mcp.tool()
+async def search_atlas_threats(query: str) -> dict:
+    """
+    Search SAFE-AI threat categories and get NIST 800-53 control mappings.
+    Returns threats matching the query with controls organized by system element
+    (Environment, AI Platform, AI Models, AI Data) and residual risk assessment.
+    Use 'all' to list all threats.
+    """
+    query_lower = query.lower().strip()
+    results = []
+
+    for tname, threat in SAFE_AI_THREATS.items():
+        if (query_lower == "all" or
+            query_lower in tname.lower() or
+            query_lower in threat.get("description", "").lower() or
+            query_lower in threat.get("atlas_id", "").lower()):
+            results.append({
+                "threat_name": tname,
+                "atlas_id": threat.get("atlas_id", ""),
+                "description": threat.get("description", ""),
+                "controls_by_system_element": threat.get("controls", {}),
+                "residual_risk": threat.get("residual_risk", "")
+            })
+
+    if not results:
+        return {
+            "query": query,
+            "count": 0,
+            "message": "No matching threats found. Try: prompt injection, data poisoning, supply chain, model exposure, insider threat, jailbreak, bias, denial of service",
+            "available_threats": list(SAFE_AI_THREATS.keys())
+        }
+
+    return {
+        "query": query,
+        "count": len(results),
+        "threats": results,
+        "source": "MITRE SAFE-AI Framework (MP250397, April 2025)"
+    }
+
+
+@mcp.tool()
+async def get_atlas_overview() -> dict:
+    """
+    Get an overview of the MITRE ATLAS framework including all 14 tactic
+    categories with descriptions, technique counts, and LLM-specific
+    technique highlights. Use this for understanding the AI threat landscape.
+    """
+    # Count techniques per tactic
+    tactic_techniques = {}
+    for tid, tech in ATLAS_TECHNIQUES.items():
+        tac_id = tech.get("tactic_id", "")
+        if tac_id not in tactic_techniques:
+            tactic_techniques[tac_id] = []
+        tactic_techniques[tac_id].append({"id": tid, "name": tech.get("name", ""), "attck_shared": tech.get("attck_shared", False)})
+
+    tactics_summary = []
+    for tac_id, tac in ATLAS_TACTICS.items():
+        techniques = tactic_techniques.get(tac_id, [])
+        tactics_summary.append({
+            "tactic_id": tac_id,
+            "name": tac["name"],
+            "description": tac["description"],
+            "technique_count": len(techniques),
+            "techniques": techniques
+        })
+
+    # Highlight LLM-specific techniques
+    llm_techniques = []
+    for tid, tech in ATLAS_TECHNIQUES.items():
+        if "LLM" in tech.get("name", ""):
+            llm_techniques.append({
+                "id": tid,
+                "name": tech.get("name", ""),
+                "tactic": tech.get("tactic", ""),
+                "description": tech.get("description", "")[:200]
+            })
+
+    return {
+        "framework": "MITRE ATLAS v5.1.0",
+        "total_tactics": len(ATLAS_TACTICS),
+        "total_techniques": len(ATLAS_TECHNIQUES),
+        "total_safe_ai_threats": len(SAFE_AI_THREATS),
+        "tactics": tactics_summary,
+        "llm_specific_techniques": llm_techniques,
+        "source": "MITRE ATLAS + SAFE-AI Framework (MP250397)"
+    }
+
+
+# ========================================
 # MCP RESOURCES
 # ========================================
 
@@ -688,22 +872,27 @@ async def kev_statistics() -> str:
 def server_info() -> str:
     """CyberIQ MCP Server information and capabilities"""
     return json.dumps({
-        "name": "CyberIQ Cyber Security MCP Server",
+        "name": "CyberIQ Federal Security MCP Server",
         "version": "1.0.0",
         "provider": "CyberIQ (cyberiq.co)",
-        "description": "AI-powered cybersecurity intelligence for security analysts",
+        "description": "AI-powered cybersecurity intelligence for federal agencies and defense contractors",
         "tools": [
             "lookup_cve — Full CVE enrichment with NVD, KEV, EPSS",
             "check_kev_status — Search CISA KEV catalog",
             "get_epss_scores — Exploit probability scores",
             "search_threats — MITRE ATT&CK and threat actor lookup",
-            "generate_poam — POA&M entry generation"
+            "generate_poam — Federal POA&M entry generation",
+            "lookup_atlas_technique — MITRE ATLAS technique lookup with SAFE-AI controls",
+            "search_atlas_threats — Search SAFE-AI threats and NIST 800-53 mappings",
+            "get_atlas_overview — ATLAS tactics and techniques summary"
         ],
         "data_sources": [
             "NIST NVD (National Vulnerability Database)",
             "CISA KEV (Known Exploited Vulnerabilities)",
             "FIRST.org EPSS (Exploit Prediction Scoring System)",
-            "MITRE ATT&CK Framework"
+            "MITRE ATT&CK Framework",
+            "MITRE ATLAS (Adversarial Threat Landscape for AI Systems)",
+            "MITRE SAFE-AI Framework (NIST 800-53 control mappings for AI)"
         ],
         "compliance_frameworks": [
             "NIST SP 800-53 Rev 5",
