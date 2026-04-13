@@ -1,5 +1,5 @@
 """
-CyberIQ Federal Security MCP Server
+CyberIQ Security MCP Server
 ====================================
 An MCP server that gives any AI agent instant access to:
 - NVD vulnerability data with CVSS scores
@@ -8,7 +8,7 @@ An MCP server that gives any AI agent instant access to:
 - MITRE ATT&CK technique mapping
 - MITRE ATLAS adversarial AI technique lookup
 - SAFE-AI NIST 800-53 control mappings for AI systems
-- Federal POA&M generation
+- POA&M generation
 
 Deploy: Railway, Docker, or local
 Protocol: Streamable HTTP (remote) or stdio (local)
@@ -50,7 +50,7 @@ except ImportError:
 # ========================================
 # Initialize MCP Server
 # ========================================
-mcp = FastMCP("CyberIQ Federal Security")
+mcp = FastMCP("CyberIQ Security")
 
 # ========================================
 # REST Test Endpoints (browser-friendly)
@@ -79,7 +79,7 @@ pre { background: white; color: #333; padding: 16px; border-radius: 12px; overfl
 .footer a { color: white; text-decoration: none; }
 </style></head><body>
 <div class="container">
-<h1>&#128737; CyberIQ Federal Security MCP Server</h1>
+<h1>&#128737; CyberIQ Security MCP Server</h1>
 <p><span class="badge">LIVE</span> &nbsp; Powered by CyberIQ &mdash; <a href="https://cyberiq.co" style="color:white;">cyberiq.co</a></p>
 
 <h2>MCP Endpoint</h2>
@@ -107,7 +107,7 @@ pre { background: white; color: #333; padding: 16px; border-radius: 12px; overfl
 2. check_kev_status      &mdash; Search CISA KEV catalog
 3. get_epss_scores       &mdash; Exploit probability scores
 4. search_threats        &mdash; MITRE ATT&CK + threat actors
-5. generate_poam         &mdash; Federal POA&M entry generation
+5. generate_poam         &mdash; POA&M entry generation
 6. lookup_atlas_technique &mdash; MITRE ATLAS technique lookup with SAFE-AI controls
 7. search_atlas_threats  &mdash; Search SAFE-AI threats and NIST 800-53 mappings
 8. get_atlas_overview    &mdash; ATLAS tactics and techniques summary
@@ -582,7 +582,7 @@ async def generate_poam(
     cvss_score: float = 0.0
 ) -> dict:
     """
-    Generate a federal Plan of Action & Milestones (POA&M) entry for a CVE.
+    Generate a Plan of Action & Milestones (POA&M) entry for a CVE.
     Includes NIST 800-53 control mapping, remediation timeline based on
     BOD 22-01, EPSS score, and KEV status. Output is formatted for
     eMASS or XACTA entry.
@@ -651,7 +651,7 @@ async def generate_poam(
                         "model": "claude-sonnet-4-20250514",
                         "max_tokens": 800,
                         "temperature": 0.2,
-                        "system": "You are a federal cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
+                        "system": "You are a cybersecurity compliance expert. Generate concise POA&M narrative entries suitable for eMASS or XACTA.",
                         "messages": [{"role": "user", "content": f"""Generate a POA&M weakness description and remediation plan for:
 CVE: {cve_id}
 Description: {cve_data.get('description', 'N/A')[:300]}
@@ -872,16 +872,16 @@ async def kev_statistics() -> str:
 def server_info() -> str:
     """CyberIQ MCP Server information and capabilities"""
     return json.dumps({
-        "name": "CyberIQ Federal Security MCP Server",
+        "name": "CyberIQ Security MCP Server",
         "version": "1.0.0",
         "provider": "CyberIQ (cyberiq.co)",
-        "description": "AI-powered cybersecurity intelligence for federal agencies and defense contractors",
+        "description": "AI-powered cybersecurity intelligence for security teams and organizations",
         "tools": [
             "lookup_cve — Full CVE enrichment with NVD, KEV, EPSS",
             "check_kev_status — Search CISA KEV catalog",
             "get_epss_scores — Exploit probability scores",
             "search_threats — MITRE ATT&CK and threat actor lookup",
-            "generate_poam — Federal POA&M entry generation",
+            "generate_poam — POA&M entry generation",
             "lookup_atlas_technique — MITRE ATLAS technique lookup with SAFE-AI controls",
             "search_atlas_threats — Search SAFE-AI threats and NIST 800-53 mappings",
             "get_atlas_overview — ATLAS tactics and techniques summary"
