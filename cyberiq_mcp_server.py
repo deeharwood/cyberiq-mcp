@@ -47,6 +47,18 @@ except ImportError:
     SAFE_AI_THREATS = {}
     def get_atlas_context(q): return "ATLAS knowledge base not loaded"
 
+# ATT&CK Enterprise + Threat Actor Cross-Reference
+try:
+    from attck_crossref import THREAT_ACTORS, ATTCK_TECHNIQUES, MALWARE_DB, CAMPAIGNS_DB, search_attck_crossref
+    print(f"✅ ATT&CK cross-reference loaded ({len(THREAT_ACTORS)} actors, {len(ATTCK_TECHNIQUES)} techniques, {len(MALWARE_DB)} malware)")
+except ImportError:
+    print("⚠️  attck_crossref.py not found - ATT&CK cross-reference disabled")
+    THREAT_ACTORS = {}
+    ATTCK_TECHNIQUES = {}
+    MALWARE_DB = {}
+    CAMPAIGNS_DB = {}
+    def search_attck_crossref(q): return ""
+
 # ========================================
 # Initialize MCP Server
 # ========================================
@@ -99,18 +111,23 @@ pre { background: white; color: #333; padding: 16px; border-radius: 12px; overfl
 <li><a href="/api/test/atlas/technique/AML.T0054">/api/test/atlas/technique/AML.T0054</a> &mdash; ATLAS: LLM Jailbreak</li>
 <li><a href="/api/test/atlas/threats">/api/test/atlas/threats</a> &mdash; All SAFE-AI threats</li>
 <li><a href="/api/test/atlas/tactics">/api/test/atlas/tactics</a> &mdash; All ATLAS tactics</li>
+<li><a href="/api/test/actor/Volt Typhoon">/api/test/actor/Volt Typhoon</a> &mdash; Threat actor lookup</li>
+<li><a href="/api/test/actor/Lazarus">/api/test/actor/Lazarus</a> &mdash; Lazarus Group</li>
+<li><a href="/api/test/malware/Cobalt Strike">/api/test/malware/Cobalt Strike</a> &mdash; Malware lookup</li>
 </ul>
 
 <h2>Available MCP Tools</h2>
 <pre>
-1. lookup_cve            &mdash; Full CVE enrichment (NVD + KEV + EPSS)
-2. check_kev_status      &mdash; Search CISA KEV catalog
-3. get_epss_scores       &mdash; Exploit probability scores
-4. search_threats        &mdash; MITRE ATT&CK + threat actors
-5. generate_poam         &mdash; POA&M entry generation
-6. lookup_atlas_technique &mdash; MITRE ATLAS technique lookup with SAFE-AI controls
-7. search_atlas_threats  &mdash; Search SAFE-AI threats and NIST 800-53 mappings
-8. get_atlas_overview    &mdash; ATLAS tactics and techniques summary
+1. lookup_cve             &mdash; Full CVE enrichment (NVD + KEV + EPSS)
+2. check_kev_status       &mdash; Search CISA KEV catalog
+3. get_epss_scores        &mdash; Exploit probability scores
+4. search_threats         &mdash; MITRE ATT&CK + threat actors
+5. generate_poam          &mdash; POA&M entry generation
+6. lookup_atlas_technique &mdash; MITRE ATLAS technique + SAFE-AI controls
+7. search_atlas_threats   &mdash; SAFE-AI threats + NIST 800-53 mappings
+8. get_atlas_overview     &mdash; ATLAS framework summary
+9. lookup_threat_actor    &mdash; 187 APT groups with ATT&CK techniques
+10. lookup_malware        &mdash; 696 malware families
 </pre>
 
 <h2>Data Sources</h2>
@@ -160,6 +177,16 @@ async def test_atlas_tactics(request):
     result = await get_atlas_overview()
     return JSONResponse(result)
 
+async def test_actor(request):
+    query = request.path_params["query"]
+    result = await lookup_threat_actor(query)
+    return JSONResponse(result)
+
+async def test_malware(request):
+    query = request.path_params["query"]
+    result = await lookup_malware(query)
+    return JSONResponse(result)
+
 # Mount test routes on the MCP server's underlying Starlette app
 _test_routes = [
     Route("/", test_page),
@@ -170,6 +197,8 @@ _test_routes = [
     Route("/api/test/atlas/technique/{technique_id}", test_atlas_technique),
     Route("/api/test/atlas/threats", test_atlas_threats),
     Route("/api/test/atlas/tactics", test_atlas_tactics),
+    Route("/api/test/actor/{query:path}", test_actor),
+    Route("/api/test/malware/{query:path}", test_malware),
 ]
 
 # Optional: Anthropic API key for POA&M generation
@@ -809,10 +838,10 @@ async def get_atlas_overview() -> dict:
     # Count techniques per tactic
     tactic_techniques = {}
     for tid, tech in ATLAS_TECHNIQUES.items():
-        tac_id = tech.get("tactic_id", "")
-        if tac_id not in tactic_techniques:
-            tactic_techniques[tac_id] = []
-        tactic_techniques[tac_id].append({"id": tid, "name": tech.get("name", ""), "attck_shared": tech.get("attck_shared", False)})
+        for tac_id in tech.get("tactic_ids", []):
+            if tac_id not in tactic_techniques:
+                tactic_techniques[tac_id] = []
+            tactic_techniques[tac_id].append({"id": tid, "name": tech.get("name", ""), "is_subtechnique": tech.get("is_subtechnique", False)})
 
     tactics_summary = []
     for tac_id, tac in ATLAS_TACTICS.items():
@@ -832,7 +861,7 @@ async def get_atlas_overview() -> dict:
             llm_techniques.append({
                 "id": tid,
                 "name": tech.get("name", ""),
-                "tactic": tech.get("tactic", ""),
+                "tactic_names": tech.get("tactic_names", []),
                 "description": tech.get("description", "")[:200]
             })
 
@@ -844,6 +873,68 @@ async def get_atlas_overview() -> dict:
         "tactics": tactics_summary,
         "llm_specific_techniques": llm_techniques,
         "source": "MITRE ATLAS + SAFE-AI Framework (MP250397)"
+    }
+
+
+@mcp.tool()
+async def lookup_threat_actor(query: str) -> dict:
+    """
+    Look up a threat actor/APT group by name or alias.
+    Returns the actor's ATT&CK techniques, aliases, description,
+    and cross-references with ATLAS AI attack techniques.
+    Covers 187 threat groups including APT28, Lazarus, Volt Typhoon, etc.
+    """
+    query_lower = query.lower().strip()
+    results = []
+
+    for name, actor in THREAT_ACTORS.items():
+        if (query_lower in name.lower() or
+            any(query_lower in a.lower() for a in actor.get("aliases", []))):
+            results.append({"name": name, **actor})
+
+    if not results:
+        # Try partial match on description
+        for name, actor in THREAT_ACTORS.items():
+            if query_lower in actor.get("description", "").lower():
+                results.append({"name": name, **actor})
+
+    if not results:
+        return {
+            "query": query,
+            "count": 0,
+            "message": "No matching threat actors found.",
+            "available_count": len(THREAT_ACTORS)
+        }
+
+    return {
+        "query": query,
+        "count": len(results),
+        "threat_actors": results[:10],
+        "source": "MITRE ATT&CK Enterprise"
+    }
+
+
+@mcp.tool()
+async def lookup_malware(query: str) -> dict:
+    """
+    Look up malware by name. Returns description and MITRE ATT&CK ID.
+    Covers 696 malware families including Cobalt Strike, Mimikatz, etc.
+    """
+    query_lower = query.lower().strip()
+    results = []
+
+    for name, mal in MALWARE_DB.items():
+        if query_lower in name.lower() or query_lower in mal.get("description", "").lower():
+            results.append({"name": name, **mal})
+
+    if not results:
+        return {"query": query, "count": 0, "available_count": len(MALWARE_DB)}
+
+    return {
+        "query": query,
+        "count": len(results),
+        "malware": results[:15],
+        "source": "MITRE ATT&CK Enterprise"
     }
 
 
@@ -883,7 +974,9 @@ def server_info() -> str:
             "generate_poam — POA&M entry generation",
             "lookup_atlas_technique — MITRE ATLAS technique lookup with SAFE-AI controls",
             "search_atlas_threats — Search SAFE-AI threats and NIST 800-53 mappings",
-            "get_atlas_overview — ATLAS tactics and techniques summary"
+            "get_atlas_overview — ATLAS tactics and techniques summary",
+            "lookup_threat_actor — 187 APT groups with ATT&CK technique mappings",
+            "lookup_malware — 696 malware families with descriptions"
         ],
         "data_sources": [
             "NIST NVD (National Vulnerability Database)",
